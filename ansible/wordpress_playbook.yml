@@ -1,0 +1,91 @@
+---
+-   name: Installer WordPress sur WSL
+    hosts: wordpress
+    become: yes
+    vars:
+        db_name: wordpress_db
+        db_user: wordpress_user
+        db_password: wordpress_pass
+        wp_url: https://wordpress.org/latest.tar.gz
+        wp_path: /var/www/html/wordpress
+
+    tasks:
+        -   name: Mettre à jour les paquets
+            apt:
+                update_cache: yes
+                upgrade: dist
+
+        -   name: Installer Apache, PHP et modules nécessaires
+            apt:
+                name:
+                    - apache2
+                    - mysql-client
+                    - php
+                    - php-mysql
+                    - php-curl
+                    - php-gd
+                    - php-mbstring
+                    - php-xml
+                    - php-xmlrpc
+                    - php-soap
+                    - php-intl
+                    - php-zip
+                state: present
+
+        -   name: Installer MariaDB server
+            apt:
+                name: mariadb-server
+                state: present
+
+        -   name: Démarrer et activer Apache
+            systemd:
+                name: apache2
+                state: started
+                enabled: yes
+
+        -   name: Démarrer et activer MariaDB
+            systemd:
+                name: mariadb
+                state: started
+                enabled: yes
+
+        -   name: Créer la base de données WordPress
+            mysql_db:
+                name: "{{ db_name }}"
+                state: present
+                login_unix_socket: /var/run/mysqld/mysqld.sock
+
+        -   name: Créer l'utilisateur WordPress MySQL
+            mysql_user:
+                name: "{{ db_user }}"
+                password: "{{ db_password }}"
+                priv: "{{ db_name }}.*:ALL"
+                state: present
+                login_unix_socket: /var/run/mysqld/mysqld.sock
+
+        -   name: Télécharger WordPress
+            get_url:
+                url: "{{ wp_url }}"
+                dest: /tmp/wordpress.tar.gz
+
+        -   name: Extraire WordPress
+            unarchive:
+                src: /tmp/wordpress.tar.gz
+                dest: /var/www/html/
+                remote_src: yes
+
+        -   name: Changer le propriétaire des fichiers WordPress
+            file:
+                path: "{{ wp_path }}"
+                owner: www-data
+                group: www-data
+                state: directory
+                recurse: yes
+
+        -   name: Configurer le fichier wp-config.php
+            template:
+                src: wp-config.php.j2
+                dest: "{{ wp_path }}/wp-config.php"
+                owner: www-data
+                group: www-data
+                mode: "0644"
